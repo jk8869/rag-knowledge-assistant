@@ -1,3 +1,4 @@
+import json
 import os
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -7,6 +8,10 @@ from utils import extract_text_from_pdf, chunk_text
 import numpy as np
 import faiss
 from pydantic import BaseModel # We need this for the search request body
+from contextlib import asynccontextmanager
+
+DB_FAISS_PATH = "faiss_index.bin"
+DB_DATA_PATH = "chunks.json"
 
 class QueryRequest(BaseModel):
     question: str
@@ -14,8 +19,6 @@ class QueryRequest(BaseModel):
 load_dotenv()
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-app = FastAPI()
 
 # VECTOR DB SETUP
 dimension = 1536 # Must match OpenAI's embedding size
@@ -30,6 +33,41 @@ def get_embedding(text: str):
         model="text-embedding-3-small" # Efficient and cheap model
     )
     return response.data[0].embedding
+
+def save_db():
+    """Saves the FAISS index and the text chunks to disk."""
+    # 1. Save FAISS Index (The Math)
+    faiss.write_index(faiss_index, DB_FAISS_PATH)
+    
+    # 2. Save Text Chunks (The Content)
+    with open(DB_DATA_PATH, "w", encoding="utf-8") as f:
+        json.dump(stored_chunks, f)
+    print("✅ Database saved to disk.")
+
+def load_db():
+    """Loads the FAISS index and text chunks from disk (if they exist)."""
+    global faiss_index, stored_chunks
+    
+    # Check if files exist
+    if os.path.exists(DB_FAISS_PATH) and os.path.exists(DB_DATA_PATH):
+        # 1. Load FAISS Index
+        faiss_index = faiss.read_index(DB_FAISS_PATH)
+        
+        # 2. Load Text Chunks
+        with open(DB_DATA_PATH, "r", encoding="utf-8") as f:
+            stored_chunks = json.load(f)
+        print("✅ Database loaded from disk.")
+    else:
+        print("⚠️ No database found on disk. Starting fresh.")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Load the DB
+    load_db()
+    yield
+    # Shutdown: (Optional) We could save here, but saving on upload is safer against crashes
+    
+app = FastAPI(title="Internal Knowledge Assistant", lifespan=lifespan)
 
 @app.get("/health")
 def health_check():
@@ -55,6 +93,8 @@ async def upload_document(file: UploadFile = File(...)):
     
     # 4. Store the text so we can look it up later
     stored_chunks.extend(chunks)
+
+    save_db()
     
     return {
         "status": "success",
