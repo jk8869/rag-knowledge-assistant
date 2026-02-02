@@ -45,15 +45,25 @@ def add_to_db(chunks: list, vectors: list):
     # Auto-save
     save_db()
 
-def search_db(query_vector, k=3):
-    """Searches for similar chunks."""
+def search_db(query_vector, k=3, threshold=0.5): # Added threshold
     query_array = np.array([query_vector]).astype('float32')
     distances, indices = faiss_index.search(query_array, k)
     
     results = []
-    for idx in indices[0]:
-        if idx != -1 and idx < len(stored_chunks):
+    # Loop through both indices AND distances
+    for i in range(len(indices[0])):
+        idx = indices[0][i]
+        dist = distances[0][i]
+        
+        # 1. Check if it's a valid index
+        if idx == -1 or idx >= len(stored_chunks):
+            continue
+            
+        # 2. THE SMART FILTER: Check if it's "close enough"
+        # Note: In L2 distance, LOWER is BETTER (0 = exact match)
+        if dist < threshold:
             results.append(stored_chunks[idx])
+            
     return results
 
 def get_stats():
