@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  # Service 1: The Brain (FastAPI)
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: rag-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      # This maps your hard drive to the container so data persists!
+      - ./data:/app/data
+    env_file:
+      - .env  # Loads your OpenAI API Key
+
+  # Service 2: The Face (Streamlit)
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: rag-frontend
+    ports:
+      - "8501:8501"
+    environment:
+      # Tell the frontend where the backend lives
+      # In Docker, we use the SERVICE NAME ('backend') as the URL
+      - BACKEND_URL=http://backend:8000
+    depends_on:
+      - backend

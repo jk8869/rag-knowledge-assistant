@@ -3,8 +3,8 @@ import json
 import faiss
 import numpy as np
 
-DB_FAISS_PATH = "faiss_index.bin"
-DB_DATA_PATH = "chunks.json"
+DB_FAISS_PATH = "data/faiss_index.bin"
+DB_DATA_PATH = "data/chunks.json"
 
 # Global State
 faiss_index = None
@@ -45,24 +45,26 @@ def add_to_db(chunks: list, vectors: list):
     # Auto-save
     save_db()
 
-def search_db(query_vector, k=3, threshold=0.5): # Added threshold
+def search_db(query_vector, k=3, threshold=1.3): # <--- CHANGED DEFAULT TO 0.8 (Less strict)
     query_array = np.array([query_vector]).astype('float32')
     distances, indices = faiss_index.search(query_array, k)
     
     results = []
-    # Loop through both indices AND distances
+    print(f"DEBUG SEARCH: Found {len(indices[0])} matches.") # <--- Debug Log
+    
     for i in range(len(indices[0])):
         idx = indices[0][i]
         dist = distances[0][i]
         
-        # 1. Check if it's a valid index
+        print(f"  - Chunk {idx} | Distance: {dist}") # <--- Debug Log: SHOW ME THE NUMBERS
+        
         if idx == -1 or idx >= len(stored_chunks):
             continue
             
-        # 2. THE SMART FILTER: Check if it's "close enough"
-        # Note: In L2 distance, LOWER is BETTER (0 = exact match)
         if dist < threshold:
             results.append(stored_chunks[idx])
+        else:
+            print(f"    -> REJECTED by threshold {threshold}") # <--- Debug Log
             
     return results
 

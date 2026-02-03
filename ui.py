@@ -1,5 +1,8 @@
+import os
 import streamlit as st
 import requests
+
+API_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
 
 # Page Config
 st.set_page_config(page_title="My Knowledge Assistant", page_icon="🤖")
@@ -16,7 +19,7 @@ if uploaded_file:
         with st.spinner("Uploading & Chunking..."):
             # Send file to FastAPI
             files = {"file": (uploaded_file.name, uploaded_file, "application/pdf")}
-            response = requests.post("http://127.0.0.1:8000/upload", files=files)
+            response = requests.post(f"{API_URL}/upload", files=files)
             
             if response.status_code == 200:
                 st.sidebar.success(f"✅ Processed! {response.json().get('chunks_added')} chunks added.")
@@ -47,7 +50,7 @@ if prompt := st.chat_input("Ask a question about your documents..."):
             try:
                 # The payload must match your QueryRequest model in main.py
                 payload = {"question": prompt} 
-                response = requests.post("http://127.0.0.1:8000/ask", json=payload)
+                response = requests.post(f"{API_URL}/ask", json=payload)
                 
                 if response.status_code == 200:
                     answer = response.json().get("answer")
