@@ -1,6 +1,15 @@
-__pycache__/
-venv
+# Security: Never upload API keys
 .env
+
+# Dependencies: Never upload the heavy libraries
+venv/
+__pycache__/
 *.pyc
-chunks.json
+
+# Database: Never upload your local data
+data/
 faiss_index.bin
+chunks.json
+
+# OS Junk
+.DS_Store
