@@ -10,3 +10,4 @@ streamlit
 requests
 pydantic
 python-dateutil
+rank_bm25

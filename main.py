@@ -40,11 +40,12 @@ class QueryRequest(BaseModel):
 
 @app.post("/ask")
 def ask_question(request: QueryRequest):
-    # 1. Embed Question
+    # 1. Embed Question (for FAISS)
     question_vector = ai.get_embedding(request.question)
     
-    # 2. Retrieve Context
-    context_chunks = db.search_db(question_vector)
+    # 2. Retrieve Context (Hybrid: Uses both text AND vector)
+    # We pass 'request.question' for BM25 and 'question_vector' for FAISS
+    context_chunks = db.search_hybrid(request.question, question_vector, k=3)
     
     if not context_chunks:
         return {"answer": "I don't have enough info."}
