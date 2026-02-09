@@ -18,7 +18,7 @@ A containerized, AI-powered document retrieval system that allows users to chat 
 ## 📦 How to Run
 1.  **Clone the repo:**
     ```bash
-    git clone <your-repo-url>
+    git clone https://github.com/jk8869/rag-knowledge-assistant.git
     ```
 2.  **Add API Key:**
     Create a `.env` file and add: `OPENAI_API_KEY=sk-...`
