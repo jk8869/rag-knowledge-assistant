@@ -49,7 +49,18 @@ if prompt := st.chat_input("Ask a question about your documents..."):
         with st.spinner("Thinking..."):
             try:
                 # The payload must match your QueryRequest model in main.py
-                payload = {"question": prompt} 
+                # Create a simplified history list (exclude the very last user message which is 'prompt')
+                # We only want previous turns for context.
+                history_payload = [
+                    {"role": m["role"], "content": m["content"]} 
+                    for m in st.session_state.messages[:-1] # Exclude current prompt
+                ]
+
+                payload = {
+                    "question": prompt,
+                    "messages": history_payload
+                }
+
                 response = requests.post(f"{API_URL}/ask", json=payload)
                 
                 if response.status_code == 200:

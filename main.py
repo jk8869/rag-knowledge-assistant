@@ -1,3 +1,4 @@
+from typing import List, Dict
 from fastapi import FastAPI, UploadFile, File
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
@@ -37,25 +38,32 @@ async def upload_document(file: UploadFile = File(...)):
 
 class QueryRequest(BaseModel):
     question: str
+    messages: List[Dict[str, str]] = []
 
 @app.post("/ask")
 def ask_question(request: QueryRequest):
-    # 1. Embed Question (for FAISS)
-    question_vector = ai.get_embedding(request.question)
-    
-    # 2. Retrieve Context (Hybrid: Uses both text AND vector)
-    # We pass 'request.question' for BM25 and 'question_vector' for FAISS
-    context_chunks = db.search_hybrid(request.question, question_vector, k=3)
-    
+    # 1. Contextualize (Rewrite) the Question
+    # We use the history to clarify "it", "that", "he", etc.
+    standalone_question = ai.contextualize_question(request.messages, request.question)
+
+    # 2. Embed the NEW standalone question
+    question_vector = ai.get_embedding(standalone_question)
+
+    # 3. Retrieve Context (using the REWRITTEN question)
+    context_chunks = db.search_hybrid(standalone_question, question_vector, k=3)
+
     if not context_chunks:
-        return {"answer": "I don't have enough info."}
-    
-    # 3. Generate Answer
+        return {"answer": "I don't have enough info based on the documents."}
+
+    # 4. Generate Answer
+    # We still send the ORIGINAL question to the final chat model, 
+    # but we provide the chunks found by the STANDALONE question.
     context_text = "\n\n---\n\n".join(context_chunks)
     answer = ai.get_answer(context_text, request.question)
-    
+
     return {
         "question": request.question,
+        "standalone_question": standalone_question, # Return this for debugging
         "answer": answer,
         "sources": context_chunks
     }
