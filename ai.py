@@ -15,23 +15,24 @@ def get_embedding(text: str):
     )
     return response.data[0].embedding
 
-def get_answer(context: str, question: str):
-    """Sends context + question to GPT-4o."""
-    system_prompt = """You are a helpful assistant. 
-    Answer the user's question strictly based on the provided context. 
-    If the answer is not in the context, say 'I don't know'.
-    The context might be messy text extracted from a PDF; do your best to clean it up."""
+def get_answer_generator(context, question):
+    """
+    Streams the answer from OpenAI chunk by chunk.
+    """
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant based on the provided context."},
+        {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {question}"}
+    ]
 
-    user_message = f"Context:\n{context}\n\nQuestion: {question}"
-
-    chat_response = client.chat.completions.create(
+    stream = client.chat.completions.create(
         model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message}
-        ]
+        messages=messages,
+        stream=True,
     )
-    return chat_response.choices[0].message.content
+
+    for chunk in stream:
+        if chunk.choices[0].delta.content is not None:
+            yield chunk.choices[0].delta.content
 
 def contextualize_question(chat_history: list, latest_question: str):
     """

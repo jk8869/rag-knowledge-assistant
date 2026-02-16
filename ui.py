@@ -1,4 +1,5 @@
 import os
+import json
 import streamlit as st
 import requests
 
@@ -44,44 +45,61 @@ if prompt := st.chat_input("Ask a question about your documents..."):
     with st.chat_message("user"):
         st.markdown(prompt)
 
+    # --- MISSING PART ADDED HERE ---
+    # Create history (exclude the current prompt to avoid duplication in backend)
+    history_payload = [
+        {"role": m["role"], "content": m["content"]} 
+        for m in st.session_state.messages[:-1]
+    ]
+
+    payload = {
+        "question": prompt,
+        "messages": history_payload
+    }
+    # -------------------------------
+
     # 2. Call FastAPI Backend
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
-            try:
-                # The payload must match your QueryRequest model in main.py
-                # Create a simplified history list (exclude the very last user message which is 'prompt')
-                # We only want previous turns for context.
-                history_payload = [
-                    {"role": m["role"], "content": m["content"]} 
-                    for m in st.session_state.messages[:-1] # Exclude current prompt
-                ]
-
-                payload = {
-                    "question": prompt,
-                    "messages": history_payload
-                }
-
-                response = requests.post(f"{API_URL}/ask", json=payload)
-                
+            message_placeholder = st.empty()
+            full_response = ""
+            sources = []
+            
+            # Connect to the stream
+            # Now 'payload' is defined, so this line will work!
+            with requests.post(f"{API_URL}/ask", json=payload, stream=True) as response:
                 if response.status_code == 200:
-                    answer = response.json().get("answer")
-                    sources = response.json().get("sources", [])
-                    
-                    # Display Answer
-                    st.markdown(answer)
-                    
-                    # (Optional) Display Sources nicely
-                    if sources:
-                        with st.expander("📚 View Sources"):
-                            for source in sources:
-                                st.text(source[:300] + "...") # Show first 300 chars
-                                st.divider()
+                    try:
+                        for line in response.iter_lines():
+                            if line:
+                                # Parse the JSON line
+                                data = json.loads(line.decode('utf-8'))
                                 
-                    # Save assistant response to history
-                    st.session_state.messages.append({"role": "assistant", "content": answer})
-                
-                else:
-                    st.error("⚠️ Backend Error: Could not get answer.")
+                                # Case 1: Metadata (Sources)
+                                if data.get("type") == "meta":
+                                    sources = data.get("sources", [])
+                                    
+                                # Case 2: Content Token
+                                elif data.get("type") == "token":
+                                    content = data.get("content", "")
+                                    full_response += content
+                                    message_placeholder.markdown(full_response + "▌")
+                                    
+                        # Final update (remove cursor)
+                        message_placeholder.markdown(full_response)
+                        
+                        # Show Sources in an Expander
+                        if sources:
+                            with st.expander("View Sources"):
+                                for s in sources:
+                                    st.write(s)
+                                    st.divider()
+                        
+                        # Save to history
+                        st.session_state.messages.append({"role": "assistant", "content": full_response})
                     
-            except Exception as e:
-                st.error(f"❌ Connection Error: {e}")
+                    except json.JSONDecodeError:
+                        st.error("Error: Failed to decode stream.")
+                else:
+                    st.error(f"Error: {response.status_code}")
+                    

@@ -1,4 +1,6 @@
 from typing import List, Dict
+import json
+from fastapi.responses import StreamingResponse
 from fastapi import FastAPI, UploadFile, File
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
@@ -42,28 +44,36 @@ class QueryRequest(BaseModel):
 
 @app.post("/ask")
 def ask_question(request: QueryRequest):
-    # 1. Contextualize (Rewrite) the Question
-    # We use the history to clarify "it", "that", "he", etc.
+    # 1. Contextualize
     standalone_question = ai.contextualize_question(request.messages, request.question)
-
-    # 2. Embed the NEW standalone question
+    
+    # 2. Embed & Search
     question_vector = ai.get_embedding(standalone_question)
-
-    # 3. Retrieve Context (using the REWRITTEN question)
     context_chunks = db.search_hybrid(standalone_question, question_vector, k=3)
-
+    
     if not context_chunks:
-        return {"answer": "I don't have enough info based on the documents."}
+        # Return a quick stream saying "No info"
+        def no_info_generator():
+            yield json.dumps({"type": "token", "content": "I don't have enough info."}) + "\n"
+        return StreamingResponse(no_info_generator(), media_type="application/x-ndjson")
 
-    # 4. Generate Answer
-    # We still send the ORIGINAL question to the final chat model, 
-    # but we provide the chunks found by the STANDALONE question.
+    # 3. Prepare the Stream Generator
     context_text = "\n\n---\n\n".join(context_chunks)
-    answer = ai.get_answer(context_text, request.question)
+    
+    def response_generator():
+        # A. Send Metadata FIRST
+        meta_data = {
+            "type": "meta",
+            "standalone_question": standalone_question,
+            "sources": context_chunks
+        }
+        yield json.dumps(meta_data) + "\n"
+        
+        # B. Send Tokens
+        ai_generator = ai.get_answer_generator(context_text, request.question)
+        for token in ai_generator:
+            token_data = {"type": "token", "content": token}
+            yield json.dumps(token_data) + "\n"
 
-    return {
-        "question": request.question,
-        "standalone_question": standalone_question, # Return this for debugging
-        "answer": answer,
-        "sources": context_chunks
-    }
+    # 4. Return the Stream
+    return StreamingResponse(response_generator(), media_type="application/x-ndjson")
