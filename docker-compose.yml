@@ -12,6 +12,8 @@ services:
     volumes:
       # This maps your hard drive to the container so data persists!
       - ./data:/app/data
+      - ./:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     env_file:
       - .env  # Loads your OpenAI API Key
 
@@ -23,6 +25,8 @@ services:
     container_name: rag-frontend
     ports:
       - "8501:8501"
+    volumes:
+      - ./:/app
     environment:
       # Tell the frontend where the backend lives
       # In Docker, we use the SERVICE NAME ('backend') as the URL
