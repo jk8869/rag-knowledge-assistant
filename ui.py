@@ -60,46 +60,49 @@ if prompt := st.chat_input("Ask a question about your documents..."):
 
     # 2. Call FastAPI Backend
     with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
-            message_placeholder = st.empty()
-            full_response = ""
-            sources = []
-            
-            # Connect to the stream
-            # Now 'payload' is defined, so this line will work!
-            with requests.post(f"{API_URL}/ask", json=payload, stream=True) as response:
-                if response.status_code == 200:
-                    try:
-                        for line in response.iter_lines():
-                            if line:
-                                # Parse the JSON line
-                                data = json.loads(line.decode('utf-8'))
-                                
-                                # Case 1: Metadata (Sources)
-                                if data.get("type") == "meta":
-                                    sources = data.get("sources", [])
-                                    
-                                # Case 2: Content Token
-                                elif data.get("type") == "token":
-                                    content = data.get("content", "")
-                                    full_response += content
-                                    message_placeholder.markdown(full_response + "▌")
-                                    
-                        # Final update (remove cursor)
-                        message_placeholder.markdown(full_response)
-                        
-                        # Show Sources in an Expander
-                        if sources:
-                            with st.expander("View Sources"):
-                                for s in sources:
-                                    st.write(s)
-                                    st.divider()
-                        
-                        # Save to history
-                        st.session_state.messages.append({"role": "assistant", "content": full_response})
-                    
-                    except json.JSONDecodeError:
-                        st.error("Error: Failed to decode stream.")
-                else:
-                    st.error(f"Error: {response.status_code}")
+        message_placeholder = st.empty()
+        full_response = ""
+        sources = []
+        spinner = st.spinner("Thinking...")
+        spinner.__enter__()
+
+        with requests.post(f"{API_URL}/ask", json=payload, stream=True) as response:
+            if response.status_code == 200:
+                try:
+                    first_token_received = False
+
+                    for line in response.iter_lines():
+                        if line:
+                            data = json.loads(line.decode("utf-8"))
+
+                            if data.get("type") == "meta":
+                                sources = data.get("sources", [])
+
+                            elif data.get("type") == "token":
+                                if not first_token_received:
+                                    spinner.__exit__(None, None, None)
+                                    first_token_received = True
+
+                                content = data.get("content", "")
+                                full_response += content
+                                message_placeholder.markdown(full_response + "▌")
+
+                    message_placeholder.markdown(full_response)
+
+                    if sources:
+                        with st.expander("View Sources"):
+                            for s in sources:
+                                st.write(s)
+                                st.divider()
+
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": full_response
+                    })
+
+                except json.JSONDecodeError:
+                    st.error("Error: Failed to decode stream.")
+            else:
+                st.error(f"Error: {response.status_code}")
+
                     
